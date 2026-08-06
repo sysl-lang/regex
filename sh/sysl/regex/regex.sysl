@@ -1,0 +1,91 @@
+module sh.sysl.regex
+
+import sysl.text.{cstring, from_cstring}
+
+// POSIX regular expressions, bound through the C sitting beside this file.
+//
+// **This package is the worked example of binding a library the machine already has.** The other
+// bindings in the organisation -- linenoise, monocypher, qcbor -- carry the library's own C, so
+// nothing has to be installed to use them. This one carries none: `regcomp`, `regexec`, `regerror`
+// and `regfree` are in the C library, POSIX has specified them since 1003.2, and every hosted target
+// sysl builds for already links the thing that holds them. So there is no vendored source here, and
+// there is no `@link` in this header either -- naming `c` would be naming what the driver passes
+// unasked (`15 §8`).
+//
+// **What it still needs is a shim, and that is the lesson.** "Already installed" answers where the
+// implementation comes from; it answers nothing about whether sysl can reach it. Three things in
+// `<regex.h>` are reachable from C and from nothing else, and `shim.c` beside this file exists for
+// exactly those three (`15 §7` sets out the general form):
+//
+//   - **`regex_t` is caller-allocated and its size is a platform's business** -- 32 bytes on Darwin,
+//     64 under glibc. A program can only allocate storage whose size it knows, so the shim allocates
+//     it and hands back a pointer, and this side never learns the size at all.
+//   - **`REG_EXTENDED` is a `#define`.** A macro has no symbol, so there is nothing for a linker to
+//     resolve and nothing for `extern` to name.
+//   - **`regmatch_t` is a layout only the header knows.** The shim copies the two offsets out into
+//     plain integers, so the struct never crosses.
+//
+// The alternative is transcribing those numbers here, which compiles everywhere and is correct on
+// whichever machine the author happened to use. Nothing would check it -- sysl's own `sizeof` would
+// report what sysl laid out rather than what C did -- and getting it wrong writes past the end of
+// the caller's storage.
+//
+// So the rule this package is here to demonstrate: **a binding to a libc interface is a shim plus a
+// `requires`, and no vendoring.** `package.hocon` carries the second half -- `<regex.h>` is POSIX
+// and not ISO C, and the shim allocates, so the package says `posix` and `alloc` rather than letting
+// a freestanding build discover both at the link.
+
+extern "sysl_regex_new" c_new() -> *u8
+extern "sysl_regex_free" c_free(re: *u8)
+extern "sysl_regex_compile" c_compile(re: *u8, pattern: *u8) -> int
+extern "sysl_regex_exec" c_exec(re: *u8, s: *u8, so: *i64, eo: *i64) -> int
+extern "sysl_regex_error" c_error(re: *u8, code: int, buf: *u8, n: u64)
+
+// Where a match landed, as byte offsets into the subject.
+struct Match
+    start: usize
+    end: usize
+
+// A compiled pattern. The handle is storage `shim.c` allocated, so `free` is not optional -- this is
+// a C resource, and a binding to a library that allocates has to say who releases it.
+struct Regex
+    handle: *u8
+
+    // Whether the subject matches anywhere, which is the common question.
+    matches(self, s: string) -> bool = self.find(s).is_some()
+
+    // Where the whole match landed, or nothing.
+    find(self, s: string) -> Option[Match]
+        val subject = cstring(s)
+
+        var so: i64 = 0i64
+        var eo: i64 = 0i64
+
+        if c_exec(self.handle, subject.ptr, &so, &eo) == 1 then
+            Some(Match(usize(so), usize(eo)))
+        else
+            None
+    end find
+
+    free(self) = c_free(self.handle)
+end Regex
+
+// A compiled pattern, or the message the C library gave for why it is not one.
+//
+// The message shows both directions of the string boundary in one place: `cstring` copies the
+// pattern into the NUL-terminated bytes `regcomp` reads, and `from_cstring` copies `regerror`'s
+// answer back out. Neither side ever holds a pointer into the other's storage.
+compile(pattern: string) -> Result[Regex, string]
+    val re   = c_new()
+    val p    = cstring(pattern)
+    val code = c_compile(re, p.ptr)
+
+    if code == 0 then
+        Ok(Regex(re))
+    else
+        var buf: [256]u8
+
+        c_error(re, code, &buf[0], 256u64)
+        c_free(re)
+        Err(from_cstring(&buf[0]).unwrap_or("the pattern did not compile"))
+end compile

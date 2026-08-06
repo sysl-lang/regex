@@ -1,0 +1,50 @@
+// POSIX regular expressions, bound to the C library the machine already has.
+//
+// There is no `dependencies` block because this package depends on nothing sysl could fetch: the
+// implementation is `regcomp`, `regexec`, `regerror` and `regfree`, which POSIX has specified since
+// 1003.2 and which every hosted C library carries.
+//
+// This is the block a *consumer* writes to reach this package, and resolution for it is built
+// (`design/packages.md` §§ 3-6): a `sysl build` fetches the coordinate, selects by MVS, checks what
+// arrived against `sysl.sum`, and compiles it as more modules.
+//
+//     dependencies {
+//       regex { git = "github.com/sysl-lang/regex", version = "0.1.0" }
+//     }
+//
+// The coordinate is identity rather than a URL, so it carries no `https://`, and the version is the
+// tag `v0.1.0` on this repository. `build-lib` and `--lib` still work and are what the tests here
+// use, but they are no longer the only way in.
+
+// `name` is the package; the module a program imports is `sh.sysl.regex`, and the two are
+// deliberately different. The module carries the `sh.sysl.` prefix so that no package claims a
+// top-level word another one might want; the package name is the short one, because it names this
+// repository rather than a namespace.
+
+package {
+  name    = "regex"
+  version = "0.1.0"
+}
+
+// **`posix`, because that is what `<regex.h>` is.** The four functions are not in ISO C -- they are
+// in POSIX.2 -- so a target with a freestanding or non-POSIX C library does not have them. Saying so
+// here turns "this cannot work there" into one refusal before anything is compiled, rather than a
+// link error naming `regcomp`.
+//
+// **`alloc`, because a `regex_t` is caller-allocated and its size is a platform's business.**
+// `shim.c` calls `calloc` for it and `free` in `Regex.free`, which is the whole reason the handle is
+// a pointer rather than a value this side could hold. This is the difference between this package
+// and monocypher, which allocates nothing and therefore names nothing: a capability clause is a
+// claim about what a library *does*.
+//
+// `posix` implies `os`, so that one is not written out.
+//
+// **What is NOT here is a `@link` directive**, and the absence is the interesting half. The other
+// bindings in the organisation either carry their C (linenoise, monocypher, qcbor) or name a library
+// the linker must be given (`m`, for qcbor's numeric coercions). Here the implementation is inside
+// the C library itself, which the driver passes on every hosted target unasked, so naming anything
+// would be naming what is already on the line (`15 §8`).
+requires {
+  alloc = true
+  posix = true
+}

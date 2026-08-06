@@ -1,0 +1,107 @@
+module sh.sysl.regex
+
+// What this binding claims, run by `sysl test .`.
+//
+// **Every case here is chosen so that only real POSIX matching produces the answer.** That matters
+// more for a binding than for ordinary code, because the failures a binding has are not the failures
+// a library has: a shim that dropped an argument, transcribed a constant that is right on one
+// platform, or returned the wrong half of a pair still compiles, still links, and still answers
+// something. A test that only asked "did it match" would pass against all three.
+//
+// So the offsets below are mid-string, the repeats are bounded where more input is available, and
+// two patterns use syntax that means something different under `REG_BASIC`. That last one is the
+// only check there is that `REG_EXTENDED` crossed the boundary at all -- it is a `#define`, so
+// nothing about it is visible to the linker, and a shim that passed `0` instead would compile
+// cleanly and quietly match different things.
+
+// -- Matching -------------------------------------------------------------------------------------
+
+// The offsets are the point. A binding that answered `0..len` to anything that matched, or that ran
+// the bounded repeat to the end of the available digits, gives different numbers here.
+@test
+find_answers_where_the_match_landed() =
+    val digits = compile("[0-9]{2,3}").expect("[0-9]{2,3} is a pattern")
+
+    assert(digits.matches("abc1234"), "a run of digits matches")
+    assert(!digits.matches("abc"), "and a subject with none does not")
+
+    val m = digits.find("abc1234").expect("a subject that matches answers Some")
+
+    assert(m.start == 3usize, "the match starts where the digits do, not at the beginning")
+    assert(m.end == 6usize, "and stops after three, where a fourth was available")
+
+    digits.free()
+
+// `{2,3}` and `+` are literal characters under POSIX basic syntax, so a shim that failed to hand
+// `REG_EXTENDED` through would match neither of these subjects and would match the pattern text
+// itself instead. This is the one assertion that covers the macro.
+@test
+the_extended_syntax_is_the_one_in_use() =
+    val re = compile("^a+b+$").expect("^a+b+$ is an extended pattern")
+
+    assert(re.matches("aab"), "one or more a then one or more b")
+    assert(re.matches("abbbb"), "and the repeats are independent")
+    assert(!re.matches("ba"), "while the order is not negotiable")
+    assert(!re.matches("a+b+"), "the operators are operators, not the characters they are written as")
+
+    re.free()
+
+// An anchored pattern has to refuse a subject it appears inside. `regexec` searches, so this is what
+// separates the anchors arriving from the search merely finding the text somewhere.
+@test
+an_anchored_pattern_refuses_a_subject_it_appears_inside() =
+    val re = compile("^abc$").expect("^abc$ is a pattern")
+
+    assert(!re.matches("xabcx"), "the subject contains abc but is not abc")
+    assert(re.matches("abc"), "while the subject that is abc matches")
+
+    re.free()
+
+// `x*` matches at offset 0 without consuming anything. That is a `Some` whose start and end are
+// equal -- not the `None` a binding testing the returned length rather than the return code gives.
+@test
+an_empty_match_is_a_place_rather_than_nothing() =
+    val re = compile("x*").expect("x* is a pattern")
+
+    val m = re.find("yyy").expect("an empty match is still a match")
+
+    assert(m.start == 0usize, "it happens at the beginning")
+    assert(m.end == 0usize, "and consumes nothing")
+
+    re.free()
+
+// `matches` is written in terms of `find`, and this pins that it stays that way: a subject the two
+// disagree about would mean one of them had grown its own idea of what matching is.
+@test
+matches_agrees_with_find() =
+    val re = compile("b+").expect("b+ is a pattern")
+
+    assert(re.matches("abbbc") == re.find("abbbc").is_some(), "on a subject that matches")
+    assert(re.matches("aaa") == re.find("aaa").is_some(), "and on one that does not")
+
+    re.free()
+
+// -- Patterns that are not patterns ----------------------------------------------------------------
+
+// A repeat whose bounds are the wrong way round. The wording is BSD's or glibc's and differs between
+// them, so only that a sentence arrived is pinned -- an empty string here would mean `regerror` was
+// called with a buffer it never wrote into, which is the failure worth catching and is invisible to
+// a test that checked only for `Err`.
+@test
+a_pattern_that_is_not_one_answers_the_c_librarys_own_words() =
+    compile("a{3,1}") match
+        Ok(re) ->
+            re.free()
+            assert(false, "a{3,1} compiled, and it is not a pattern")
+
+        Err(why) -> assert(why.len > 0usize, "regerror wrote nothing into the buffer it was given")
+
+// A bracket expression that never closes, which is the other shape of the same path.
+@test
+an_unclosed_bracket_is_refused() =
+    compile("a[") match
+        Ok(re) ->
+            re.free()
+            assert(false, "a[ compiled, and it is not a pattern")
+
+        Err(why) -> assert(why.len > 0usize, "the C library said why")
