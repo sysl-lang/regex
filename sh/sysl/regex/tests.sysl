@@ -27,8 +27,8 @@ find_answers_where_the_match_landed() =
 
     val m = digits.find("abc1234").expect("a subject that matches answers Some")
 
-    assert(m.start == 3usize, "the match starts where the digits do, not at the beginning")
-    assert(m.end == 6usize, "and stops after three, where a fourth was available")
+    assert(m.start == 3, "the match starts where the digits do, not at the beginning")
+    assert(m.end == 6, "and stops after three, where a fourth was available")
 
     digits.free()
 
@@ -65,8 +65,8 @@ an_empty_match_is_a_place_rather_than_nothing() =
 
     val m = re.find("yyy").expect("an empty match is still a match")
 
-    assert(m.start == 0usize, "it happens at the beginning")
-    assert(m.end == 0usize, "and consumes nothing")
+    assert(m.start == 0, "it happens at the beginning")
+    assert(m.end == 0, "and consumes nothing")
 
     re.free()
 
@@ -94,7 +94,7 @@ a_pattern_that_is_not_one_answers_the_c_librarys_own_words() =
             re.free()
             assert(false, "a{3,1} compiled, and it is not a pattern")
 
-        Err(why) -> assert(why.len > 0usize, "regerror wrote nothing into the buffer it was given")
+        Err(why) -> assert(why.len > 0, "regerror wrote nothing into the buffer it was given")
 
 // A bracket expression that never closes, which is the other shape of the same path.
 @test
@@ -104,4 +104,4 @@ an_unclosed_bracket_is_refused() =
             re.free()
             assert(false, "a[ compiled, and it is not a pattern")
 
-        Err(why) -> assert(why.len > 0usize, "the C library said why")
+        Err(why) -> assert(why.len > 0, "the C library said why")

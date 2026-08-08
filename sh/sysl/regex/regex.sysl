@@ -58,8 +58,8 @@ struct Regex
     find(self, s: string) -> Option[Match]
         val subject = cstring(s)
 
-        var so: i64 = 0i64
-        var eo: i64 = 0i64
+        var so: i64 = 0
+        var eo: i64 = 0
 
         if c_exec(self.handle, subject.ptr, &so, &eo) == 1 then
             Some(Match(usize(so), usize(eo)))
@@ -85,7 +85,7 @@ compile(pattern: string) -> Result[Regex, string]
     else
         var buf: [256]u8
 
-        c_error(re, code, &buf[0], 256u64)
+        c_error(re, code, &buf[0], 256)
         c_free(re)
         Err(from_cstring(&buf[0]).unwrap_or("the pattern did not compile"))
 end compile
