@@ -31,7 +31,7 @@ package {
 // here turns "this cannot work there" into one refusal before anything is compiled, rather than a
 // link error naming `regcomp`.
 //
-// **`alloc`, because a `regex_t` is caller-allocated and its size is a platform's business.**
+// **`heap`, because a `regex_t` is caller-allocated and its size is a platform's business.**
 // `shim.c` calls `calloc` for it and `free` in `Regex.free`, which is the whole reason the handle is
 // a pointer rather than a value this side could hold. This is the difference between this package
 // and monocypher, which allocates nothing and therefore names nothing: a capability clause is a
@@ -45,6 +45,6 @@ package {
 // the C library itself, which the driver passes on every hosted target unasked, so naming anything
 // would be naming what is already on the line (`15 §8`).
 requires {
-  alloc = true
+  heap  = true
   posix = true
 }
