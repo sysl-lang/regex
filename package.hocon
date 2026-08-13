@@ -9,11 +9,11 @@
 // arrived against `sysl.sum`, and compiles it as more modules.
 //
 //     dependencies {
-//       regex { git = "github.com/sysl-lang/regex", version = "0.1.1" }
+//       regex { git = "github.com/sysl-lang/regex", version = "0.2.0" }
 //     }
 //
 // The coordinate is identity rather than a URL, so it carries no `https://`, and the version is the
-// tag `v0.1.1` on this repository. `build-lib` and `--lib` still work and are what the tests here
+// tag `v0.2.0` on this repository. `build-lib` and `--lib` still work and are what the tests here
 // use, but they are no longer the only way in.
 
 // `name` is the package; the module a program imports is `sh.sysl.regex`, and the two are
@@ -23,7 +23,7 @@
 
 package {
   name    = "regex"
-  version = "0.1.1"
+  version = "0.2.0"
 }
 
 // **`posix`, because that is what `<regex.h>` is.** The four functions are not in ISO C -- they are
@@ -32,10 +32,10 @@ package {
 // link error naming `regcomp`.
 //
 // **`heap`, because a `regex_t` is caller-allocated and its size is a platform's business.**
-// `shim.c` calls `calloc` for it and `free` in `Regex.free`, which is the whole reason the handle is
-// a pointer rather than a value this side could hold. This is the difference between this package
-// and monocypher, which allocates nothing and therefore names nothing: a capability clause is a
-// claim about what a library *does*.
+// `c/shim.c` calls `calloc` for it, and frees it again from `Regex`'s destructor -- which is the whole
+// reason the handle is a pointer rather than a value this side could hold. This is the difference
+// between this package and monocypher, which allocates nothing and therefore names nothing: a
+// capability clause is a claim about what a library *does*.
 //
 // `posix` implies `os`, so that one is not written out.
 //

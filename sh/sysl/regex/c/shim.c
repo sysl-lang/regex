@@ -1,17 +1,21 @@
 /* The C that a POSIX regex binding cannot be written without.
  *
- * Everything here is reachable from C and from nothing else, which is the whole
- * reason this file exists beside `regex.sysl` rather than being transcribed into
- * it:
+ * What is left here is about *layouts*, which is the one thing that genuinely
+ * cannot cross:
  *
  *   - `sizeof(regex_t)`. The caller allocates it, and it is 32 bytes on Darwin
  *     and 64 under glibc. A sysl program cannot spell storage whose size it has
  *     no way to learn -- so this file allocates it and hands back a pointer, and
  *     the sysl side never learns the size at all.
- *   - `REG_EXTENDED`. A `#define` has no symbol, so there is nothing for a
- *     linker to resolve and nothing for `extern` to name.
  *   - `regmatch_t`. Another layout only the header knows. The bounds are copied
  *     out into two plain integers here, so it never has to cross.
+ *
+ * **`REG_EXTENDED` used to be on that list and no longer is.** It is a `#define`
+ * with no symbol, so there was nothing for a linker to resolve -- but a macro's
+ * *number* is something `c const` asks the C compiler for, and `c.sysl` does. So
+ * the flags are no longer this file's decision: `sysl_regex_compile` takes
+ * whatever the caller or'd together, and the sysl side is what names
+ * `REG_EXTENDED` as the default.
  *
  * Nothing in this file is sysl-specific. It is the ordinary shim any language
  * writes when it binds a C library, and the build compiles it because it is
@@ -29,9 +33,13 @@ void sysl_regex_free(void *re) {
     }
 }
 
-/* Zero on success, and otherwise a code `sysl_regex_error` turns into a message. */
-int sysl_regex_compile(void *re, const char *pattern) {
-    return regcomp((regex_t *)re, pattern, REG_EXTENDED);
+/* Zero on success, and otherwise a code `sysl_regex_error` turns into a message.
+ *
+ * `cflags` arrives already or'd together from the constants `c.sysl` asks the
+ * header for, so this function makes no choice about syntax at all.
+ */
+int sysl_regex_compile(void *re, const char *pattern, int cflags) {
+    return regcomp((regex_t *)re, pattern, cflags);
 }
 
 /* Whether the pattern matches, with the bounds of the whole match written back

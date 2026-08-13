@@ -11,8 +11,12 @@ module sh.sysl.regex
 // So the offsets below are mid-string, the repeats are bounded where more input is available, and
 // two patterns use syntax that means something different under `REG_BASIC`. That last one is the
 // only check there is that `REG_EXTENDED` crossed the boundary at all -- it is a `#define`, so
-// nothing about it is visible to the linker, and a shim that passed `0` instead would compile
+// nothing about it is visible to the linker, and a `code()` that or'd `0` instead would compile
 // cleanly and quietly match different things.
+//
+// **The other two flags are checked the same way, by matching rather than by reading.** `Options.code`
+// or-ing the wrong constant answers a pattern that is merely case-sensitive, or one whose anchors mean
+// the ends of the subject -- both of which compile and both of which are only visible in what matches.
 
 // -- Matching -------------------------------------------------------------------------------------
 
@@ -30,7 +34,6 @@ find_answers_where_the_match_landed() =
     assert(m.start == 3, "the match starts where the digits do, not at the beginning")
     assert(m.end == 6, "and stops after three, where a fourth was available")
 
-    digits.free()
 
 // `{2,3}` and `+` are literal characters under POSIX basic syntax, so a shim that failed to hand
 // `REG_EXTENDED` through would match neither of these subjects and would match the pattern text
@@ -44,7 +47,6 @@ the_extended_syntax_is_the_one_in_use() =
     assert(!re.matches("ba"), "while the order is not negotiable")
     assert(!re.matches("a+b+"), "the operators are operators, not the characters they are written as")
 
-    re.free()
 
 // An anchored pattern has to refuse a subject it appears inside. `regexec` searches, so this is what
 // separates the anchors arriving from the search merely finding the text somewhere.
@@ -55,7 +57,6 @@ an_anchored_pattern_refuses_a_subject_it_appears_inside() =
     assert(!re.matches("xabcx"), "the subject contains abc but is not abc")
     assert(re.matches("abc"), "while the subject that is abc matches")
 
-    re.free()
 
 // `x*` matches at offset 0 without consuming anything. That is a `Some` whose start and end are
 // equal -- not the `None` a binding testing the returned length rather than the return code gives.
@@ -68,7 +69,6 @@ an_empty_match_is_a_place_rather_than_nothing() =
     assert(m.start == 0, "it happens at the beginning")
     assert(m.end == 0, "and consumes nothing")
 
-    re.free()
 
 // `matches` is written in terms of `find`, and this pins that it stays that way: a subject the two
 // disagree about would mean one of them had grown its own idea of what matching is.
@@ -79,7 +79,49 @@ matches_agrees_with_find() =
     assert(re.matches("abbbc") == re.find("abbbc").is_some(), "on a subject that matches")
     assert(re.matches("aaa") == re.find("aaa").is_some(), "and on one that does not")
 
-    re.free()
+// -- The flags -------------------------------------------------------------------------------------
+
+// **`REG_ICASE` reaching `regcomp` is the whole claim, and the only way to see it is to match.** A
+// `code()` that or'd the wrong constant compiles, links, and answers a pattern that is merely
+// case-sensitive -- so a subject differing from the pattern only in case is what separates the flag
+// arriving from it being dropped.
+@test
+icase_matches_without_regard_to_case() =
+    val exact = compile("HELLO").expect("HELLO is a pattern")
+    val loose = compile_with("HELLO", Options(true, false)).expect("and so is it case-insensitively")
+
+    assert(exact.matches("HELLO"), "the pattern matches itself either way")
+    assert(loose.matches("HELLO"), "on both")
+
+    assert(!exact.matches("hello"), "without the flag the case has to agree")
+    assert(loose.matches("hello"), "and with it it does not")
+
+    assert(loose.matches("HeLlO"), "in any mixture")
+
+// `REG_NEWLINE` changes what an anchor means, which is a second flag reaching the same argument -- and
+// a `code()` that or'd one constant for both would pass the test above and fail this one.
+@test
+newline_makes_the_anchors_mean_a_line() =
+    val whole = compile("^b$").expect("^b$ is a pattern")
+    val lines = compile_with("^b$", Options(false, true)).expect("and so is it line-wise")
+
+    assert(!whole.matches("a\nb"), "the subject is not the single line b")
+    assert(lines.matches("a\nb"), "but its second line is")
+
+    assert(whole.matches("b"), "a subject that is just b matches either way")
+    assert(lines.matches("b"), "on both")
+
+// The two are independent, and `plain()` asks for neither.
+@test
+plain_asks_for_neither_flag() =
+    val o = plain()
+
+    assert(!o.icase, "case matters by default")
+    assert(!o.newline, "and a subject is one string")
+
+    assert(o.code() != Options(true, false).code(), "each flag changes the value handed to regcomp")
+    assert(o.code() != Options(false, true).code(), "both of them")
+    assert(Options(true, false).code() != Options(true, true).code(), "and they compose")
 
 // -- Patterns that are not patterns ----------------------------------------------------------------
 
@@ -90,9 +132,7 @@ matches_agrees_with_find() =
 @test
 a_pattern_that_is_not_one_answers_the_c_librarys_own_words() =
     compile("a{3,1}") match
-        Ok(re) ->
-            re.free()
-            assert(false, "a{3,1} compiled, and it is not a pattern")
+        Ok(_) -> assert(false, "a{3,1} compiled, and it is not a pattern")
 
         Err(why) -> assert(why.len > 0, "regerror wrote nothing into the buffer it was given")
 
@@ -100,8 +140,6 @@ a_pattern_that_is_not_one_answers_the_c_librarys_own_words() =
 @test
 an_unclosed_bracket_is_refused() =
     compile("a[") match
-        Ok(re) ->
-            re.free()
-            assert(false, "a[ compiled, and it is not a pattern")
+        Ok(_) -> assert(false, "a[ compiled, and it is not a pattern")
 
         Err(why) -> assert(why.len > 0, "the C library said why")

@@ -1,0 +1,65 @@
+// POSIX regular expressions as C reaches them: the shim's five entry points, and the compile flags
+// `<regex.h>` defines.
+//
+// **Everything that is C lives in this directory** — `shim.c` and this file of declarations over it.
+// Nothing here is meant to be called by a program: a compiled pattern is a bare pointer, a failure is
+// an `int` that has to be turned into a sentence by a second call, and a match comes back as two
+// offsets through out-parameters. The module above this one turns those into a `&Regex` with a
+// destructor and is what an application imports.
+//
+// The split keeps two jobs apart. This one has to be **faithful** — a signature that disagrees with
+// the C links perfectly and corrupts the call at run time, and nothing in this arrangement checks one
+// against the other, so each declaration below was read out of `shim.c` rather than remembered. The
+// other one has to be **pleasant**, which is a different question and would otherwise be answered in
+// the same breath.
+//
+// **There is no `extern` on a libc symbol here, and that is not an oversight.** `regcomp` and
+// `regexec` both traffic in shapes only the header knows — `regex_t`, whose size is a platform's
+// business, and `regmatch_t` — so every one of them has to be reached through the shim. `regfree` could
+// have been named directly and is not, because the storage it frees was `calloc`'d by `sysl_regex_new`
+// and freeing the two halves in one place is how they stay paired.
+
+module sh.sysl.regex.c
+
+// The machine's own header, so **this is the one thing a consumer of this package has to have
+// installed**: `<regex.h>` and a C library that implements it. That is POSIX 1003.2 and every hosted
+// target sysl builds for has it, but a `c const` block asks the C compiler at build time, so a
+// toolchain without the header fails here rather than at the link.
+@include("regex.h")
+
+// ## The compile flags, asked for rather than written down
+//
+// **The README used to say a `#define` was reachable from C and from nothing else, and that stopped
+// being true when `c const` shipped** — `15 §7`'s three C-only shapes are a caller-allocated opaque
+// type, a macro *used as a value in C*, and a shape with no sysl spelling. A macro's *number* is now
+// something sysl can ask for, which is what lets the flags below be a decision a caller makes rather
+// than one `shim.c` made for everybody.
+c const
+    EXTENDED: int = "REG_EXTENDED"
+    ICASE:    int = "REG_ICASE"
+    NEWLINE:  int = "REG_NEWLINE"
+
+// A compiled pattern, as storage `shim.c` allocated. **`opaque struct` rather than `*u8`**: it
+// publishes no layout, so nothing can read a field or make one by hand, and it cannot be confused with
+// any other pointer this package passes around. sysl never learns its size, which is the whole point —
+// `sizeof(regex_t)` is 32 bytes on Darwin and 64 under glibc.
+opaque struct Regex
+
+// `calloc(1, sizeof(regex_t))`, which is the allocation a sysl program cannot make for itself.
+extern "sysl_regex_new" new() -> *Regex
+
+// `regfree` and then `free`, in that order and in one place, because the two halves were allocated
+// together.
+extern "sysl_regex_free" free(re: *Regex)
+
+// Zero on success, and otherwise a code `error` turns into a sentence. `cflags` is or'd from the
+// constants above.
+extern "sysl_regex_compile" compile(re: *Regex, pattern: *u8, cflags: int) -> int
+
+// Whether the pattern matches, with the bounds of the whole match written back through `so` and `eo`
+// when it does. Splitting the answer from the bounds is what keeps `regmatch_t` in C.
+extern "sysl_regex_exec" exec(re: *Regex, s: *u8, so: *i64, eo: *i64) -> int
+
+// The C library's own words for a compile that failed, written into storage the caller owns — the same
+// shape as `strerror_r`.
+extern "sysl_regex_error" error(re: *Regex, code: int, buf: *u8, n: u64)
