@@ -58,7 +58,7 @@ sysl run yourprogram.sysl --lib /path/to/this/repo
 ## The surface
 
 ```sysl
-compile(pattern: string) -> Result[Regex, string]
+compile(pattern: string) -> Result[&Regex, string]
 
 struct Match
     start: usize        // byte offsets into the subject
