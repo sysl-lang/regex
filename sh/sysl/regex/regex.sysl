@@ -34,7 +34,7 @@ import sysl.text.{cstring, from_cstring}
 // syntax for everybody, and case-insensitive matching -- one flag -- was simply unreachable.
 //
 // So the rule this package is here to demonstrate: **a binding to a libc interface is a shim plus a
-// `requires`, and no vendoring.** `package.hocon` carries the second half -- `<regex.h>` is POSIX
+// `requires`, and no vendoring.** `sysl.hocon` carries the second half -- `<regex.h>` is POSIX
 // and not ISO C, and the shim allocates, so the package says `posix` and `heap` rather than letting
 // a freestanding build discover both at the link.
 

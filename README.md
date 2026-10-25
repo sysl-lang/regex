@@ -20,7 +20,7 @@ sh/sysl/regex/
     c/
         c.sysl          the shim as C declares it, and the compile flags <regex.h> defines
         shim.c          the C that only C can reach
-package.hocon           who this package is, and what it needs of the machine
+sysl.hocon              who this package is, and what it needs of the machine
 ```
 
 **Everything that is C lives in `c/`**, module `sh.sysl.regex.c`. That is the two-layer shape every
@@ -34,16 +34,16 @@ claims a name nobody else will mint rather than the top-level word `regex`.
 
 ## Using it
 
-Name it in your project's `package.hocon` and `sysl build` fetches it:
+Name it in your project's `sysl.hocon` and `sysl build` fetches it:
 
 ```hocon
 dependencies {
-  regex { git = "github.com/sysl-lang/regex", version = "0.2.0" }
+  regex { git = "github.com/sysl-lang/regex", version = "0.2.1" }
 }
 ```
 
 The coordinate is an identity rather than a URL, so it carries no `https://`, and `version` is the
-tag `v0.2.0` here.
+tag `v0.2.1` here (it needs sysl 0.6.0).
 
 Or point at it directly, which needs no fetching and is what this repository's own tests do. Either a
 built artifact or the source tree works, and they are the same road:
@@ -173,7 +173,7 @@ the C library, which the driver passes on every hosted target unasked, so naming
 what is already on the line (`15 §8`). Compare qcbor, which names `m` because its numeric coercions
 reach `pow`.
 
-**4. Say what you need of the machine.** `package.hocon` carries `requires { heap = true,
+**4. Say what you need of the machine.** `sysl.hocon` carries `requires { heap = true,
 posix = true }` — `posix` because `<regex.h>` is POSIX and not ISO C, `heap` because the shim calls
 `calloc`. That turns "this cannot work on a freestanding target" into one refusal before anything is
 compiled, rather than a link error naming `regcomp`.
